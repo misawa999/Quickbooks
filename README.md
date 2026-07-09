@@ -10,6 +10,24 @@ This is intentionally a scoped-down MVP: **journal entries only**, one CLI,
 no GUI, no bank-statement parsing, no auto-creation of accounts/names. See
 "Non-goals" below.
 
+## Quick start (double-click, no typing)
+
+1. Make sure QuickBooks Desktop is open with your company file loaded.
+2. Edit `sample_batch.json` (or make a copy) with your real transaction —
+   see "Batch JSON format" below for the shape.
+3. Double-click **`run_import.bat`**.
+4. When prompted, type the batch file's name (or drag the file onto the
+   window) and press Enter.
+5. It runs a dry-run first and shows you exactly what would be imported.
+   Review it, then type `YES` to actually import, or anything else to
+   cancel — nothing is written unless you type `YES`.
+
+That's the whole workflow for day-to-day use. Everything below is the
+"how it works" / troubleshooting reference for when something needs
+adjusting (e.g. `run_import.bat` uses 32-bit Python — see the comment at
+the top of that file if `py -0` shows a different version tag than
+`-3.13-32` on your machine).
+
 ## How it works
 
 ```
@@ -27,18 +45,36 @@ batch.json  →  validate (Pydantic)  →  dry-run report  →  operator reviews
   you pass `--commit`.
 - Entries are inserted **one at a time**, not batched in a single request, so
   one bad entry doesn't poison the rest of the run.
-- Every insert (success or failure) is appended to `import_log.jsonl`. Re-running
+- Every insert (success or failure) is appended to a log file. Re-running
   the same batch file skips any `line_id` already logged as `ok` — safe to
-  re-run after a crash or partial failure.
+  re-run after a crash or partial failure. By default this log lives at
+  `Documents\QuickBooks Importer\import_log.jsonl` (created automatically
+  on first use) — override with `--log-file` if you want it elsewhere. The
+  path in use is always printed at the top of every run.
 
 ## Requirements
 
 - **Windows**, with QuickBooks Desktop Canada Pro 2021 installed and the
   company file open.
 - [QuickBooks SDK](https://developer.intuit.com/app/developer/qbdesktop/docs/get-started) — the last release (v16) works with QB 2021.
-- Python 3.10+, with:
+- **32-bit Python**, specifically. QuickBooks Desktop 2021 is a 32-bit
+  application, and its SDK's COM component can't reliably be driven from a
+  64-bit process — with 64-bit Python you'll hit `Could not start
+  QuickBooks` even though everything else is set up correctly. If you
+  already have 64-bit Python installed for other things, that's fine,
+  just install a 32-bit copy alongside it (installer at python.org, pick
+  the file labeled "Windows installer (32-bit)"; uncheck "Add to PATH" so
+  it doesn't fight with your existing install). Then find its version tag
+  with:
   ```
-  pip install -r requirements.txt
+  py -0
+  ```
+  which lists something like `-V:3.13-32   Python 3.13 (32-bit)`. Use that
+  exact tag (e.g. `py -3.13-32 ...`) for every command below, and set it as
+  `PYTHON_TAG` at the top of `run_import.bat`.
+- With the right (32-bit) Python:
+  ```
+  py -3.13-32 -m pip install -r requirements.txt
   ```
   (`pydantic`, `pywin32` on Windows, `pytest` for the test suite.)
 
@@ -122,7 +158,12 @@ Field rules:
 See `sample_batch.json` for a working example (one multicurrency entry, one
 home-currency entry).
 
-## Usage
+## Usage (manual / advanced)
+
+`run_import.bat` covers day-to-day use. For scripting, or when you need a
+flag it doesn't expose, call the CLI directly (substitute your actual
+32-bit Python command — `py -3.13-32` on the reference machine this was
+built against, see "Requirements" below for how to find yours):
 
 ```bash
 # Validate + preview, writes nothing
@@ -133,6 +174,9 @@ python import_batch.py sample_batch.json --commit
 
 # Point at a specific company file instead of "whatever's currently open"
 python import_batch.py sample_batch.json --commit --company-file "C:\path\to\Company.QBW"
+
+# Use a different log file location than the Documents default
+python import_batch.py sample_batch.json --commit --log-file "C:\path\to\import_log.jsonl"
 
 # Re-import entries already marked ok in the log (use with care)
 python import_batch.py sample_batch.json --commit --force
@@ -172,6 +216,7 @@ to intentionally re-run it with `--force` semantics via a fresh log).
 ## Repo layout
 
 ```
+run_import.bat      # double-click launcher: dry-run -> confirm -> commit
 schema.py          # Pydantic models for the batch format
 qb_requests.py      # qbXML request builders + response parsers
 qb_session.py       # COM connection/session lifecycle (Windows-only at runtime)

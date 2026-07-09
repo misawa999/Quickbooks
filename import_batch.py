@@ -27,6 +27,11 @@ from qb_requests import build_journal_entry_add_rq, parse_journal_entry_add_rs
 from qb_session import QBSession, QBSessionError
 from schema import Batch
 
+# Fixed, always-writable default so the log doesn't depend on the current
+# working directory (a bare relative filename broke repeatedly under
+# OneDrive-synced/protected folders — see README troubleshooting notes).
+DEFAULT_LOG_PATH = Path.home() / "Documents" / "QuickBooks Importer" / "import_log.jsonl"
+
 
 def load_batch(path: Path) -> Batch:
     raw = json.loads(path.read_text(encoding="utf-8"))
@@ -69,7 +74,9 @@ def print_dry_run_report(batch: Batch, skip_ids: Set[str], missing: List[str]) -
         if entry.memo:
             print(f"    memo: {entry.memo}")
         for line in entry.lines:
-            side = f"DR {line.debit}" if line.debit > 0 else f"CR {line.credit}"
+            # Match the two-decimal formatting actually sent to QuickBooks
+            # (see qb_requests._line_xml) so the preview isn't misleading.
+            side = f"DR {line.debit:.2f}" if line.debit > 0 else f"CR {line.credit:.2f}"
             extra = f"  ({line.memo})" if line.memo else ""
             print(f"    {side:>14}  {line.account}{extra}")
         print()
@@ -171,7 +178,12 @@ def main() -> int:
         default="",
         help="Path to the .qbw company file (blank = currently open file)",
     )
-    parser.add_argument("--log-file", type=Path, default=Path("import_log.jsonl"))
+    parser.add_argument(
+        "--log-file",
+        type=Path,
+        default=DEFAULT_LOG_PATH,
+        help=f"Where to write the import log (default: {DEFAULT_LOG_PATH})",
+    )
     parser.add_argument(
         "--commit", action="store_true", help="Actually write to QuickBooks. Default is dry-run."
     )
@@ -195,6 +207,7 @@ def main() -> int:
         print(f"Could not read batch file: {e}")
         return 1
 
+    print(f"Log file: {args.log_file}\n")
     skip_ids = set() if args.force else load_processed_line_ids(args.log_file)
 
     if not args.commit:
