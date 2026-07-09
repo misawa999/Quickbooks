@@ -33,6 +33,20 @@ def load_batch(path: Path) -> Batch:
     return Batch.model_validate(raw)
 
 
+def log_safely(log_path: Path, record: dict) -> None:
+    """Append to the import log, but never let a logging failure hide a
+    real QuickBooks result or crash mid-batch. Warn loudly instead."""
+    try:
+        append_log(log_path, record)
+    except OSError as e:
+        print(
+            f"  WARNING: could not write to log file {log_path} ({e}). "
+            f"The above result is accurate, but this entry (line_id={record['line_id']}) "
+            f"will NOT be recognized as already-imported on the next run — "
+            f"fix the log file location/permissions before re-running this batch."
+        )
+
+
 def all_account_names(batch: Batch) -> List[str]:
     names: List[str] = []
     for entry in batch.transactions:
@@ -89,7 +103,12 @@ def run_commit(
                 response = session.process(request)
                 result = parse_journal_entry_add_rs(response)
             except Exception as e:
-                append_log(
+                # Report the real outcome BEFORE touching the log file — a
+                # log-write failure must never hide whether QuickBooks
+                # actually accepted or rejected the transaction.
+                failed += 1
+                print(f"[{entry.line_id}] ERROR: {e}")
+                log_safely(
                     log_path,
                     {
                         "ts": datetime.now(timezone.utc).isoformat(),
@@ -101,14 +120,14 @@ def run_commit(
                         "message": str(e),
                     },
                 )
-                failed += 1
-                print(f"[{entry.line_id}] ERROR: {e}")
                 if not continue_on_error:
                     break
                 continue
 
             if result["status_code"] == 0:
-                append_log(
+                inserted += 1
+                print(f"[{entry.line_id}] OK -> TxnID {result['txn_id']}")
+                log_safely(
                     log_path,
                     {
                         "ts": datetime.now(timezone.utc).isoformat(),
@@ -120,10 +139,10 @@ def run_commit(
                         "message": result["status_message"],
                     },
                 )
-                inserted += 1
-                print(f"[{entry.line_id}] OK -> TxnID {result['txn_id']}")
             else:
-                append_log(
+                failed += 1
+                print(f"[{entry.line_id}] FAILED ({result['status_code']}): {result['status_message']}")
+                log_safely(
                     log_path,
                     {
                         "ts": datetime.now(timezone.utc).isoformat(),
@@ -135,8 +154,6 @@ def run_commit(
                         "message": result["status_message"],
                     },
                 )
-                failed += 1
-                print(f"[{entry.line_id}] FAILED ({result['status_code']}): {result['status_message']}")
                 if not continue_on_error:
                     break
 
