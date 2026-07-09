@@ -1,0 +1,3 @@
+pydantic>=2,<3
+pywin32; sys_platform == "win32"
+pytest>=7

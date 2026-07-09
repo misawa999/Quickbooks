@@ -1,0 +1,26 @@
+{
+  "batch_id": "example_2026-07",
+  "generated_at": "2026-07-09T10:00:00+08:00",
+  "transactions": [
+    {
+      "line_id": "je-2026-07-001",
+      "date": "2026-07-01",
+      "memo": "Office rent, July",
+      "currency": "CHF",
+      "exchange_rate": 1.0962,
+      "lines": [
+        { "account": "OCBC Bank (CHF)", "credit": 1250.00 },
+        { "account": "Uncategorized Expenses", "debit": 1250.00 }
+      ]
+    },
+    {
+      "line_id": "je-2026-07-002",
+      "date": "2026-07-02",
+      "memo": "Client payment received (home currency)",
+      "lines": [
+        { "account": "Uncategorised Deposits", "credit": 500.00 },
+        { "account": "OCBC Bank (USD)", "debit": 500.00 }
+      ]
+    }
+  ]
+}
