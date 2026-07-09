@@ -6,7 +6,9 @@ REM  QuickBooks Journal Importer - GUI launcher
 REM
 REM  This is the one to give to non-technical office staff: double-
 REM  click it, browse for a JSON batch file, review the report, click
-REM  Import. No typing, no console window.
+REM  Import. No typing required. A console window stays open alongside
+REM  the GUI on purpose -- if something ever fails to start, the error
+REM  prints here instead of vanishing silently.
 REM
 REM  Portable like run_import.bat: runs relative to its own folder and
 REM  auto-detects whichever 32-bit Python is installed (QuickBooks
@@ -29,11 +31,17 @@ if not defined PYTHON_TAG (
     exit /b 1
 )
 
-REM pyw suppresses the console window (GUI apps don't need one). Falls
-REM back to py/python if pyw isn't found for some reason.
-where pyw >nul 2>&1
-if errorlevel 1 (
-    py %PYTHON_TAG% gui.py
-) else (
-    start "" pyw %PYTHON_TAG% gui.py
+echo Starting QuickBooks Importer (Python %PYTHON_TAG%)...
+echo.
+py %PYTHON_TAG% gui.py
+set GUI_EXIT=%errorlevel%
+
+if not "%GUI_EXIT%"=="0" (
+    echo.
+    echo The program closed unexpectedly ^(exit code %GUI_EXIT%^) -- see any
+    echo error message above. Common cause: the packages this tool needs
+    echo aren't installed for this Python. Try running:
+    echo   py %PYTHON_TAG% -m pip install -r requirements.txt
+    echo and then double-click this file again.
+    pause
 )
