@@ -39,7 +39,7 @@ def test_build_journal_entry_add_rq_home_currency():
     assert "<JournalCreditLine>" in xml
     assert "<JournalDebitLine>" in xml
     assert "<FullName>Bank</FullName>" in xml
-    assert "<Amount>100</Amount>" in xml
+    assert "<Amount>100.00</Amount>" in xml
     assert "<Memo>[je1] office rent</Memo>" in xml
     assert "<Memo>[je1] rent</Memo>" in xml  # entry-level memo applied to the credit line
 
@@ -72,6 +72,32 @@ def test_build_journal_entry_add_rq_multicurrency():
     # No memo was set on the entry or either line, but each line still gets
     # tagged with [line_id] so it's traceable in the QB register.
     assert xml.count("<Memo>[je2] </Memo>") == 2
+
+
+def test_amount_always_has_two_decimal_places():
+    # QuickBooks rejects amounts without exactly two decimals (statusCode
+    # 3040, "error when converting the amount") — e.g. "100.0" fails,
+    # "100.00" doesn't. Values that round-trip through JSON as a whole
+    # number or with only one decimal place must still come out as X.XX.
+    batch = Batch.model_validate(
+        {
+            "batch_id": "b1",
+            "transactions": [
+                {
+                    "line_id": "je3",
+                    "date": "2026-07-01",
+                    "lines": [
+                        {"account": "Bank", "credit": 100},
+                        {"account": "Expenses", "debit": 100},
+                    ],
+                }
+            ],
+        }
+    )
+    xml = build_journal_entry_add_rq(batch.transactions[0])
+    assert "<Amount>100.00</Amount>" in xml
+    assert "<Amount>100.0</Amount>" not in xml
+    assert "<Amount>100</Amount>" not in xml
 
 
 def test_parse_journal_entry_add_rs_success():

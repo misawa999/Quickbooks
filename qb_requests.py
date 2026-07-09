@@ -15,10 +15,14 @@ QBXML_VERSION = "13.0"
 
 
 def _line_xml(tag: str, account: str, amount, memo: Optional[str]) -> str:
+    # QuickBooks' AMTTYPE parser rejects amounts that aren't formatted with
+    # exactly two decimal places (statusCode 3040) — e.g. "100.0" fails,
+    # "100.00" doesn't. Decimal's default str() drops/keeps whatever
+    # precision the input JSON happened to have, so it's normalized here.
     parts = [
         f"<{tag}>",
         f"<AccountRef><FullName>{escape(account)}</FullName></AccountRef>",
-        f"<Amount>{amount}</Amount>",
+        f"<Amount>{amount:.2f}</Amount>",
     ]
     if memo:
         parts.append(f"<Memo>{escape(memo)}</Memo>")
