@@ -22,11 +22,20 @@ no GUI, no bank-statement parsing, no auto-creation of accounts/names. See
    Review it, then type `YES` to actually import, or anything else to
    cancel — nothing is written unless you type `YES`.
 
-That's the whole workflow for day-to-day use. Everything below is the
-"how it works" / troubleshooting reference for when something needs
-adjusting (e.g. `run_import.bat` uses 32-bit Python — see the comment at
-the top of that file if `py -0` shows a different version tag than
-`-3.13-32` on your machine).
+That's the whole workflow for day-to-day use. `run_import.bat` is portable:
+it always runs relative to its own folder (not wherever it was launched
+from) and auto-detects whichever 32-bit Python is installed, so moving the
+whole folder to a different computer works without editing anything in the
+script — as long as that computer also has 32-bit Python, QuickBooks
+Desktop, the QBSDK, and this tool's pip packages installed (see
+Requirements below; `pip install -r requirements.txt` needs to be re-run
+on each new computer, same as any Python tool). Note the import log
+starts fresh per computer/user (it lives under that user's Documents
+folder), so a batch already imported on one machine won't be recognized
+as a duplicate on another — check the dry-run report before committing if
+you're not sure.
+
+Everything below is the "how it works" / troubleshooting reference.
 
 ## How it works
 
@@ -69,14 +78,17 @@ batch.json  →  validate (Pydantic)  →  dry-run report  →  operator reviews
   ```
   py -0
   ```
-  which lists something like `-V:3.13-32   Python 3.13 (32-bit)`. Use that
-  exact tag (e.g. `py -3.13-32 ...`) for every command below, and set it as
-  `PYTHON_TAG` at the top of `run_import.bat`.
-- With the right (32-bit) Python:
+  which lists something like `-V:3.13-32   Python 3.13 (32-bit)`. `run_import.bat`
+  detects this automatically — you only need the exact tag (e.g. `-3.13-32`)
+  if you're running the CLI directly (see "Usage (manual / advanced)"
+  below).
+- With the right (32-bit) Python, install the packages this tool needs —
+  substitute your own tag from `py -0`:
   ```
   py -3.13-32 -m pip install -r requirements.txt
   ```
-  (`pydantic`, `pywin32` on Windows, `pytest` for the test suite.)
+  (`pydantic`, `pywin32` on Windows, `pytest` for the test suite.) This
+  needs to be re-run once on each new computer you use this tool from.
 
 Schema validation, the dry-run report, and the test suite all run fine on
 any OS with no QuickBooks installed — only `--commit` requires the real

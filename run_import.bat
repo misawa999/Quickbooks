@@ -4,22 +4,38 @@ setlocal enabledelayedexpansion
 REM ============================================================
 REM  QuickBooks Journal Importer - double-click launcher
 REM
-REM  If this fails saying Python can't be found, open a terminal
-REM  and run "py -0" to see your installed versions, then change
-REM  PYTHON_TAG below to match your 32-bit one (must end in -32 -
-REM  QuickBooks Desktop's SDK requires 32-bit Python).
+REM  Portable: always runs relative to this file's own folder (not
+REM  wherever it happened to be launched from) and auto-detects
+REM  whichever 32-bit Python is installed -- QuickBooks Desktop's SDK
+REM  requires 32-bit specifically, but not any particular version, so
+REM  this works unmodified on a different computer with a different
+REM  Python version installed.
 REM ============================================================
-set PYTHON_TAG=-3.13-32
+cd /d "%~dp0"
 
-py %PYTHON_TAG% -c "1" >nul 2>&1
-if errorlevel 1 (
-    echo Could not find 32-bit Python using "py %PYTHON_TAG%".
-    echo Run "py -0" in a terminal to see what's installed, then edit
-    echo PYTHON_TAG at the top of this file to match.
+set PYTHON_TAG=
+set RAWTAG=
+for /f "tokens=1" %%A in ('py -0 2^>nul ^| findstr /i "(32-bit)"') do set "RAWTAG=%%A"
+if defined RAWTAG set "PYTHON_TAG=-!RAWTAG:-V:=!"
+
+if not defined PYTHON_TAG (
+    echo Could not find a 32-bit Python install on this computer.
+    echo QuickBooks Desktop's SDK requires 32-bit Python specifically --
+    echo install one from python.org ("Windows installer (32-bit)"), then
+    echo re-run this script. See README.md for details.
     pause
     exit /b 1
 )
 
+py %PYTHON_TAG% -c "1" >nul 2>&1
+if errorlevel 1 (
+    echo Detected Python tag "%PYTHON_TAG%" but could not run it.
+    echo Run "py -0" in a terminal to check what's actually installed.
+    pause
+    exit /b 1
+)
+
+echo Using Python %PYTHON_TAG%
 echo.
 echo Make sure QuickBooks Desktop is open with your company file loaded.
 echo.
