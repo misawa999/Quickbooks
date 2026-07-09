@@ -21,8 +21,8 @@ if defined RAWTAG set "PYTHON_TAG=-!RAWTAG:-V:=!"
 if not defined PYTHON_TAG (
     echo Could not find a 32-bit Python install on this computer.
     echo QuickBooks Desktop's SDK requires 32-bit Python specifically --
-    echo install one from python.org ("Windows installer (32-bit)"), then
-    echo re-run this script. See README.md for details.
+    echo install one from python.org, choosing the "Windows installer
+    echo 32-bit" download, then re-run this script. See README.md.
     pause
     exit /b 1
 )

@@ -25,20 +25,20 @@ if defined RAWTAG set "PYTHON_TAG=-!RAWTAG:-V:=!"
 if not defined PYTHON_TAG (
     echo Could not find a 32-bit Python install on this computer.
     echo QuickBooks Desktop's SDK requires 32-bit Python specifically --
-    echo install one from python.org ("Windows installer (32-bit)"), then
-    echo double-click this file again. See README.md for details.
+    echo install one from python.org, choosing the "Windows installer
+    echo 32-bit" download, then double-click this file again. See README.md.
     pause
     exit /b 1
 )
 
-echo Starting QuickBooks Importer (Python %PYTHON_TAG%)...
+echo Starting QuickBooks Importer, Python tag %PYTHON_TAG% ...
 echo.
 py %PYTHON_TAG% gui.py
 set GUI_EXIT=%errorlevel%
 
 if not "%GUI_EXIT%"=="0" (
     echo.
-    echo The program closed unexpectedly ^(exit code %GUI_EXIT%^) -- see any
+    echo The program closed unexpectedly, exit code %GUI_EXIT% -- see any
     echo error message above. Common cause: the packages this tool needs
     echo aren't installed for this Python. Try running:
     echo   py %PYTHON_TAG% -m pip install -r requirements.txt
