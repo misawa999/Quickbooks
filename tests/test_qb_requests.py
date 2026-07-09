@@ -2,6 +2,7 @@ from schema import Batch
 from qb_requests import (
     build_account_query_rq,
     build_journal_entry_add_rq,
+    currency_full_name,
     parse_account_query_rs,
     parse_journal_entry_add_rs,
 )
@@ -64,7 +65,9 @@ def test_build_journal_entry_add_rq_multicurrency():
     )
     xml = build_journal_entry_add_rq(batch.transactions[0])
 
-    assert "<CurrencyRef><FullName>CHF</FullName></CurrencyRef>" in xml
+    # CHF -> "Swiss Franc": QuickBooks' Currency List uses descriptive
+    # names, not ISO codes, as the CurrencyRef FullName.
+    assert "<CurrencyRef><FullName>Swiss Franc</FullName></CurrencyRef>" in xml
     assert "<ExchangeRate>1.0962</ExchangeRate>" in xml
     # rate convention: home currency per 1 unit foreign, per the SDK's OSR docs.
     assert xml.index("ExchangeRate") > 0
@@ -72,6 +75,14 @@ def test_build_journal_entry_add_rq_multicurrency():
     # No memo was set on the entry or either line, but each line still gets
     # tagged with [line_id] so it's traceable in the QB register.
     assert xml.count("<Memo>[je2] </Memo>") == 2
+
+
+def test_currency_full_name_translation():
+    assert currency_full_name("USD") == "US Dollar"
+    assert currency_full_name("usd") == "US Dollar"
+    assert currency_full_name("CAD") == "Canadian Dollar"
+    # Unrecognized codes pass through unchanged rather than being dropped.
+    assert currency_full_name("XYZ") == "XYZ"
 
 
 def test_amount_always_has_two_decimal_places():

@@ -13,6 +13,33 @@ from schema import JournalEntry
 
 QBXML_VERSION = "13.0"
 
+# QuickBooks' Currency List identifies currencies by descriptive name (e.g.
+# "US Dollar"), not by ISO code — CurrencyRef's FullName must match the list
+# exactly, or QuickBooks rejects it with statusCode 3140 ("invalid reference
+# ... record does not exist"). This maps common ISO codes to QuickBooks'
+# standard built-in names so batch files can keep using plain codes. Codes
+# not in this table are passed through unchanged (assumed to already be the
+# exact QuickBooks list name).
+CURRENCY_NAMES = {
+    "USD": "US Dollar",
+    "CAD": "Canadian Dollar",
+    "EUR": "Euro",
+    "GBP": "British Pound",
+    "CHF": "Swiss Franc",
+    "JPY": "Japanese Yen",
+    "AUD": "Australian Dollar",
+    "HKD": "Hong Kong Dollar",
+    "SGD": "Singapore Dollar",
+    "CNY": "Chinese Yuan Renminbi",
+    "INR": "Indian Rupee",
+    "NZD": "New Zealand Dollar",
+    "MXN": "Mexican Peso",
+}
+
+
+def currency_full_name(code: str) -> str:
+    return CURRENCY_NAMES.get(code.upper(), code)
+
 
 def _line_xml(tag: str, account: str, amount, memo: Optional[str]) -> str:
     # QuickBooks' AMTTYPE parser rejects amounts that aren't formatted with
@@ -43,7 +70,8 @@ def build_journal_entry_add_rq(entry: JournalEntry) -> str:
     # register.
     header = [f"<TxnDate>{entry.date.isoformat()}</TxnDate>"]
     if entry.currency:
-        header.append(f"<CurrencyRef><FullName>{escape(entry.currency)}</FullName></CurrencyRef>")
+        currency_name = currency_full_name(entry.currency)
+        header.append(f"<CurrencyRef><FullName>{escape(currency_name)}</FullName></CurrencyRef>")
         header.append(f"<ExchangeRate>{entry.exchange_rate}</ExchangeRate>")
 
     tag_prefix = f"[{entry.line_id}] "

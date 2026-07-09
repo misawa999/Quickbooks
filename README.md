@@ -102,11 +102,20 @@ Field rules:
   already have its own `memo`. Set a per-line `memo` instead if you want
   different text on the debit vs. credit side.
 - `currency` / `exchange_rate`: both optional together. Omit both for a
-  home-currency (USD) entry. If you set `currency`, `exchange_rate` is
-  required and must be > 0. Convention: **home-currency units per 1 unit of
-  foreign currency** (e.g. a CHF rate around 1.10, not 0.91) — this matches
+  home-currency entry. If you set `currency`, `exchange_rate` is required
+  and must be > 0. Convention: **home-currency units per 1 unit of foreign
+  currency** (e.g. a CHF rate around 1.10, not 0.91) — this matches
   QuickBooks' own `ExchangeRate` field. If your numbers come out roughly
   inverted, check this first.
+  Use a plain ISO code (`USD`, `CAD`, `EUR`, `GBP`, `CHF`, `JPY`, `AUD`,
+  `HKD`, `SGD`, `CNY`, `INR`, `NZD`, `MXN`) — `qb_requests.py`'s
+  `CURRENCY_NAMES` table translates it to QuickBooks' actual Currency List
+  name (e.g. `USD` → "US Dollar"), since that's what `CurrencyRef` must
+  match exactly, not the ISO code. A code outside that table is sent
+  through unchanged, so use the exact QuickBooks list name for anything
+  not listed. Requires Multicurrency to already be enabled in the company
+  file (irreversible — see Phase 0 in the original build spec) and the
+  currency to be **active**, not just present, in Lists → Currency List.
 - `account`: exact QuickBooks account name (case-sensitive), checked to
   exist before any writes (see Preflight below).
 
