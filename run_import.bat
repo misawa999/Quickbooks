@@ -30,6 +30,11 @@ if "%~1"=="" (
     set BATCHFILE=%~1
 )
 
+REM Strip any quotes the user typed (or that came with a dragged file) so
+REM the path below is never wrapped twice -- double-quoting breaks parsing
+REM of any path containing a space, e.g. "C:\New folder\...".
+set BATCHFILE=!BATCHFILE:"=!
+
 if not exist "!BATCHFILE!" (
     echo Could not find file: !BATCHFILE!
     pause
