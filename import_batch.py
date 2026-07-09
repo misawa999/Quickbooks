@@ -17,7 +17,7 @@ import json
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Set
+from typing import Callable, List, Set
 
 from pydantic import ValidationError
 
@@ -38,13 +38,13 @@ def load_batch(path: Path) -> Batch:
     return Batch.model_validate(raw)
 
 
-def log_safely(log_path: Path, record: dict) -> None:
+def log_safely(log_path: Path, record: dict, emit: Callable[[str], None] = print) -> None:
     """Append to the import log, but never let a logging failure hide a
     real QuickBooks result or crash mid-batch. Warn loudly instead."""
     try:
         append_log(log_path, record)
     except OSError as e:
-        print(
+        emit(
             f"  WARNING: could not write to log file {log_path} ({e}). "
             f"The above result is accurate, but this entry (line_id={record['line_id']}) "
             f"will NOT be recognized as already-imported on the next run — "
@@ -59,27 +59,29 @@ def all_account_names(batch: Batch) -> List[str]:
     return names
 
 
-def print_dry_run_report(batch: Batch, skip_ids: Set[str], missing: List[str]) -> None:
-    print(f"Batch: {batch.batch_id}  ({len(batch.transactions)} entries)\n")
+def print_dry_run_report(
+    batch: Batch, skip_ids: Set[str], missing: List[str], emit: Callable[[str], None] = print
+) -> None:
+    emit(f"Batch: {batch.batch_id}  ({len(batch.transactions)} entries)\n")
     if missing:
-        print("PREFLIGHT FAILED - accounts not found in QuickBooks:")
+        emit("PREFLIGHT FAILED - accounts not found in QuickBooks:")
         for name in missing:
-            print(f"  - {name}")
-        print()
+            emit(f"  - {name}")
+        emit("")
 
     for entry in batch.transactions:
         dup = "  [DUPLICATE - already imported]" if entry.line_id in skip_ids else ""
         cur = f"{entry.currency} @ {entry.exchange_rate}" if entry.currency else "home currency"
-        print(f"[{entry.line_id}] {entry.date}  {cur}{dup}")
+        emit(f"[{entry.line_id}] {entry.date}  {cur}{dup}")
         if entry.memo:
-            print(f"    memo: {entry.memo}")
+            emit(f"    memo: {entry.memo}")
         for line in entry.lines:
             # Match the two-decimal formatting actually sent to QuickBooks
             # (see qb_requests._line_xml) so the preview isn't misleading.
             side = f"DR {line.debit:.2f}" if line.debit > 0 else f"CR {line.credit:.2f}"
             extra = f"  ({line.memo})" if line.memo else ""
-            print(f"    {side:>14}  {line.account}{extra}")
-        print()
+            emit(f"    {side:>14}  {line.account}{extra}")
+        emit("")
 
 
 def run_commit(
@@ -89,19 +91,20 @@ def run_commit(
     skip_ids: Set[str],
     force: bool,
     continue_on_error: bool,
+    emit: Callable[[str], None] = print,
 ) -> int:
     inserted = skipped = failed = 0
     with QBSession(company_file) as session:
         missing = missing_accounts(session, all_account_names(batch))
         if missing:
-            print("Aborting: accounts not found in QuickBooks:")
+            emit("Aborting: accounts not found in QuickBooks:")
             for name in missing:
-                print(f"  - {name}")
+                emit(f"  - {name}")
             return 1
 
         for entry in batch.transactions:
             if entry.line_id in skip_ids and not force:
-                print(f"[{entry.line_id}] skipped (already imported)")
+                emit(f"[{entry.line_id}] skipped (already imported)")
                 skipped += 1
                 continue
 
@@ -114,7 +117,7 @@ def run_commit(
                 # log-write failure must never hide whether QuickBooks
                 # actually accepted or rejected the transaction.
                 failed += 1
-                print(f"[{entry.line_id}] ERROR: {e}")
+                emit(f"[{entry.line_id}] ERROR: {e}")
                 log_safely(
                     log_path,
                     {
@@ -126,6 +129,7 @@ def run_commit(
                         "qbxml_status_code": None,
                         "message": str(e),
                     },
+                    emit=emit,
                 )
                 if not continue_on_error:
                     break
@@ -133,7 +137,7 @@ def run_commit(
 
             if result["status_code"] == 0:
                 inserted += 1
-                print(f"[{entry.line_id}] OK -> TxnID {result['txn_id']}")
+                emit(f"[{entry.line_id}] OK -> TxnID {result['txn_id']}")
                 log_safely(
                     log_path,
                     {
@@ -145,10 +149,11 @@ def run_commit(
                         "qbxml_status_code": result["status_code"],
                         "message": result["status_message"],
                     },
+                    emit=emit,
                 )
             else:
                 failed += 1
-                print(f"[{entry.line_id}] FAILED ({result['status_code']}): {result['status_message']}")
+                emit(f"[{entry.line_id}] FAILED ({result['status_code']}): {result['status_message']}")
                 log_safely(
                     log_path,
                     {
@@ -160,11 +165,12 @@ def run_commit(
                         "qbxml_status_code": result["status_code"],
                         "message": result["status_message"],
                     },
+                    emit=emit,
                 )
                 if not continue_on_error:
                     break
 
-    print(f"\ninserted={inserted} skipped={skipped} failed={failed}")
+    emit(f"\ninserted={inserted} skipped={skipped} failed={failed}")
     return 0 if failed == 0 else 1
 
 

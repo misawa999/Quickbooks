@@ -1,16 +1,32 @@
 # Simple Journal Importer
 
-A minimal CLI tool to import a JSON batch of **general journal entries** into
+A minimal tool to import a JSON batch of **general journal entries** into
 **QuickBooks Desktop Canada Pro 2021** via the QuickBooks SDK (qbXML over the
 `QBXMLRP2` COM interface). Each entry optionally carries a foreign `currency`
 and `exchange_rate`, so it supports multicurrency journal entries as well as
 plain home-currency ones.
 
-This is intentionally a scoped-down MVP: **journal entries only**, one CLI,
-no GUI, no bank-statement parsing, no auto-creation of accounts/names. See
-"Non-goals" below.
+This is intentionally a scoped-down MVP: **journal entries only**, no
+bank-statement parsing, no auto-creation of accounts/names. See "Non-goals"
+below.
 
-## Quick start (double-click, no typing)
+## Quick start — for office staff (GUI, no typing)
+
+1. Make sure QuickBooks Desktop is open with the company file loaded.
+2. Double-click **`QuickBooks Importer.bat`**. A window opens — no black
+   console, no commands to type.
+3. Click **Browse...** and pick the batch JSON file for this import.
+4. The window automatically shows a dry-run report: exactly what would be
+   imported, with any problems (missing accounts, can't reach QuickBooks)
+   called out clearly. Nothing is written yet.
+5. Read the report. If it looks right, click **Import into QuickBooks**,
+   confirm the popup, and watch the result appear in the same window.
+
+That's the entire workflow. The window enforces the safe order — it won't
+let you click Import until a clean dry-run has run for the file you have
+selected.
+
+## Quick start — for whoever maintains this tool (CLI, scriptable)
 
 1. Make sure QuickBooks Desktop is open with your company file loaded.
 2. Edit `sample_batch.json` (or make a copy) with your real transaction —
@@ -22,18 +38,17 @@ no GUI, no bank-statement parsing, no auto-creation of accounts/names. See
    Review it, then type `YES` to actually import, or anything else to
    cancel — nothing is written unless you type `YES`.
 
-That's the whole workflow for day-to-day use. `run_import.bat` is portable:
-it always runs relative to its own folder (not wherever it was launched
-from) and auto-detects whichever 32-bit Python is installed, so moving the
-whole folder to a different computer works without editing anything in the
-script — as long as that computer also has 32-bit Python, QuickBooks
-Desktop, the QBSDK, and this tool's pip packages installed (see
-Requirements below; `pip install -r requirements.txt` needs to be re-run
-on each new computer, same as any Python tool). Note the import log
-starts fresh per computer/user (it lives under that user's Documents
-folder), so a batch already imported on one machine won't be recognized
-as a duplicate on another — check the dry-run report before committing if
-you're not sure.
+Both `.bat` launchers are portable: they always run relative to their own
+folder (not wherever they were launched from) and auto-detect whichever
+32-bit Python is installed, so moving the whole folder to a different
+computer works without editing anything — as long as that computer also
+has 32-bit Python, QuickBooks Desktop, the QBSDK, and this tool's pip
+packages installed (see Requirements below; `pip install -r
+requirements.txt` needs to be re-run on each new computer, same as any
+Python tool). Note the import log starts fresh per computer/user (it
+lives under that user's Documents folder), so a batch already imported on
+one machine won't be recognized as a duplicate on another — check the
+dry-run report before committing if you're not sure.
 
 Everything below is the "how it works" / troubleshooting reference.
 
@@ -89,6 +104,9 @@ batch.json  →  validate (Pydantic)  →  dry-run report  →  operator reviews
   ```
   (`pydantic`, `pywin32` on Windows, `pytest` for the test suite.) This
   needs to be re-run once on each new computer you use this tool from.
+- The GUI (`gui.py` / `QuickBooks Importer.bat`) uses `tkinter`, which
+  ships built into the standard python.org Windows installer — nothing
+  extra to install for it specifically.
 
 Schema validation, the dry-run report, and the test suite all run fine on
 any OS with no QuickBooks installed — only `--commit` requires the real
@@ -228,15 +246,17 @@ to intentionally re-run it with `--force` semantics via a fresh log).
 ## Repo layout
 
 ```
-run_import.bat      # double-click launcher: dry-run -> confirm -> commit
+QuickBooks Importer.bat  # GUI launcher -- give this one to office staff
+run_import.bat      # CLI launcher: dry-run -> type YES -> commit
+gui.py              # Tkinter GUI (browse, review, click Import)
 schema.py          # Pydantic models for the batch format
 qb_requests.py      # qbXML request builders + response parsers
 qb_session.py       # COM connection/session lifecycle (Windows-only at runtime)
 preflight.py        # account-existence check
 dedupe.py           # import_log.jsonl read/append
-import_batch.py     # CLI entry point
+import_batch.py     # CLI entry point + shared dry-run/commit logic (used by gui.py too)
 sample_batch.json   # example batch (multicurrency + home-currency entries)
-tests/               # schema, qbXML builder, and dedupe tests (no QuickBooks needed)
+tests/               # schema, qbXML builder, dedupe, and emit-injection tests (no QuickBooks needed)
 ```
 
 ## Testing
