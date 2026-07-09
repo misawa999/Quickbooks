@@ -27,19 +27,21 @@ def test_build_journal_entry_add_rq_home_currency():
     xml = build_journal_entry_add_rq(batch.transactions[0])
 
     assert "<TxnDate>2026-07-01</TxnDate>" in xml
-    assert "<RefNumber>je1</RefNumber>" in xml
-    assert xml.index("<TxnDate>") < xml.index("<RefNumber>")
+    # RefNumber is never used: QuickBooks caps it at 11 chars (statusCode
+    # 3070 on anything longer), so line_id goes in each line's Memo instead.
+    assert "<RefNumber>" not in xml
     assert "CurrencyRef" not in xml
     assert "ExchangeRate" not in xml
     # JournalEntryAdd has no header-level Memo; entry.memo falls back onto
-    # each line that doesn't have its own line-level memo.
+    # each line that doesn't have its own line-level memo, all prefixed
+    # with [line_id] for traceability in the QB register.
     assert xml.count("<Memo>") == 2
     assert "<JournalCreditLine>" in xml
     assert "<JournalDebitLine>" in xml
     assert "<FullName>Bank</FullName>" in xml
     assert "<Amount>100</Amount>" in xml
-    assert "office rent" in xml
-    assert ">rent<" in xml  # entry-level memo applied to the credit line
+    assert "<Memo>[je1] office rent</Memo>" in xml
+    assert "<Memo>[je1] rent</Memo>" in xml  # entry-level memo applied to the credit line
 
 
 def test_build_journal_entry_add_rq_multicurrency():
@@ -66,9 +68,10 @@ def test_build_journal_entry_add_rq_multicurrency():
     assert "<ExchangeRate>1.0962</ExchangeRate>" in xml
     # rate convention: home currency per 1 unit foreign, per the SDK's OSR docs.
     assert xml.index("ExchangeRate") > 0
-    # RefNumber must precede CurrencyRef/ExchangeRate per the qbXML schema.
-    assert xml.index("<RefNumber>") < xml.index("<CurrencyRef>")
-    assert "<Memo>" not in xml  # no memo set anywhere on this entry
+    assert "<RefNumber>" not in xml
+    # No memo was set on the entry or either line, but each line still gets
+    # tagged with [line_id] so it's traceable in the QB register.
+    assert xml.count("<Memo>[je2] </Memo>") == 2
 
 
 def test_parse_journal_entry_add_rs_success():

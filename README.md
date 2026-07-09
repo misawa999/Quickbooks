@@ -91,8 +91,9 @@ Windows/QuickBooks environment.
 
 Field rules:
 - `line_id`: unique per transaction, stable across re-runs. This is the
-  dedupe key, and is also written into the QuickBooks `RefNumber` field so
-  you can find it in the register.
+  dedupe key, and is prefixed as `[line_id]` onto every line's memo so you
+  can find it in the register. (Not put in QuickBooks' `RefNumber` field —
+  that's capped at 11 characters and silently rejects anything longer.)
 - `lines`: at least 2. Each line has **exactly one** of `debit` or `credit`
   set (not both, not neither). The entry must balance (total debit == total
   credit) or it's rejected before anything is sent to QuickBooks.

@@ -31,16 +31,21 @@ def build_journal_entry_add_rq(entry: JournalEntry) -> str:
     # QuickBooks' parser is strict about both order and which elements are
     # valid at all — e.g. there is no header-level <Memo> on this request
     # type, only per-line, so entry.memo is applied to each line instead.
+    #
+    # line_id is NOT put in RefNumber: QuickBooks Desktop caps RefNumber at
+    # 11 characters and silently rejects longer ones (statusCode 3070), so
+    # any non-trivial line_id would break. Instead it's prefixed onto each
+    # line's memo, which has no such limit and is still visible in the
+    # register.
     header = [f"<TxnDate>{entry.date.isoformat()}</TxnDate>"]
-    # line_id goes in RefNumber: stable, searchable, and shows up in the QB UI register.
-    header.append(f"<RefNumber>{escape(entry.line_id)}</RefNumber>")
     if entry.currency:
         header.append(f"<CurrencyRef><FullName>{escape(entry.currency)}</FullName></CurrencyRef>")
         header.append(f"<ExchangeRate>{entry.exchange_rate}</ExchangeRate>")
 
+    tag_prefix = f"[{entry.line_id}] "
     lines: List[str] = []
     for line in entry.lines:
-        memo = line.memo or entry.memo
+        memo = tag_prefix + (line.memo or entry.memo or "")
         if line.debit > 0:
             lines.append(_line_xml("JournalDebitLine", line.account, line.debit, memo))
         else:
