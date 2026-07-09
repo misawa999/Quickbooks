@@ -96,6 +96,10 @@ Field rules:
 - `lines`: at least 2. Each line has **exactly one** of `debit` or `credit`
   set (not both, not neither). The entry must balance (total debit == total
   credit) or it's rejected before anything is sent to QuickBooks.
+- `memo` (entry-level, optional): QuickBooks' `JournalEntryAdd` request has
+  no header-level memo field, so this is applied to every line that doesn't
+  already have its own `memo`. Set a per-line `memo` instead if you want
+  different text on the debit vs. credit side.
 - `currency` / `exchange_rate`: both optional together. Omit both for a
   home-currency (USD) entry. If you set `currency`, `exchange_rate` is
   required and must be > 0. Convention: **home-currency units per 1 unit of

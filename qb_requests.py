@@ -27,21 +27,24 @@ def _line_xml(tag: str, account: str, amount, memo: Optional[str]) -> str:
 
 
 def build_journal_entry_add_rq(entry: JournalEntry) -> str:
+    # Element order below matches the qbXML JournalEntryAdd schema exactly.
+    # QuickBooks' parser is strict about both order and which elements are
+    # valid at all — e.g. there is no header-level <Memo> on this request
+    # type, only per-line, so entry.memo is applied to each line instead.
     header = [f"<TxnDate>{entry.date.isoformat()}</TxnDate>"]
+    # line_id goes in RefNumber: stable, searchable, and shows up in the QB UI register.
+    header.append(f"<RefNumber>{escape(entry.line_id)}</RefNumber>")
     if entry.currency:
         header.append(f"<CurrencyRef><FullName>{escape(entry.currency)}</FullName></CurrencyRef>")
         header.append(f"<ExchangeRate>{entry.exchange_rate}</ExchangeRate>")
-    # line_id goes in RefNumber: stable, searchable, and shows up in the QB UI register.
-    header.append(f"<RefNumber>{escape(entry.line_id)}</RefNumber>")
-    if entry.memo:
-        header.append(f"<Memo>{escape(entry.memo)}</Memo>")
 
     lines: List[str] = []
     for line in entry.lines:
+        memo = line.memo or entry.memo
         if line.debit > 0:
-            lines.append(_line_xml("JournalDebitLine", line.account, line.debit, line.memo))
+            lines.append(_line_xml("JournalDebitLine", line.account, line.debit, memo))
         else:
-            lines.append(_line_xml("JournalCreditLine", line.account, line.credit, line.memo))
+            lines.append(_line_xml("JournalCreditLine", line.account, line.credit, memo))
 
     body = "".join(header) + "".join(lines)
     return (
