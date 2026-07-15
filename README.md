@@ -31,6 +31,18 @@ That's the entire workflow. The window enforces the safe order — it won't
 let you click Import until a clean dry-run has run for the file you have
 selected.
 
+**Re-importing something already sent**, e.g. to redo a batch after fixing
+a typo'd account name: check **"Force re-import"** before browsing/
+importing. This only affects the currently selected batch — it re-sends
+those specific entries even though they're already logged as done,
+without touching the history of any other batch. This is almost always
+what you want, rather than the blunter "Clear Import History..." button
+next to the log file path, which wipes the de-duplication memory for
+*every* past import (it backs up the old log with a timestamp instead of
+deleting it, but you'd still lose track of what's already in QuickBooks
+unless you go read that backup file yourself) — use that only if you
+genuinely need a full reset, not just to redo one batch.
+
 (Running `gui.py`/`QuickBooks Importer.bat` from source instead of the
 packaged `.exe` works identically, just needs Python set up — see below.)
 

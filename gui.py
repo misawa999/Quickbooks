@@ -22,6 +22,7 @@ import sys
 import threading
 import traceback
 import tkinter as tk
+from datetime import datetime
 from pathlib import Path
 from tkinter import filedialog, messagebox, scrolledtext
 
@@ -48,6 +49,7 @@ class ImporterApp:
         self.batch_path: Path | None = None
         self.batch = None
         self.dry_run_ok = False
+        self.force_var = tk.BooleanVar(value=False)
         # Carries ("text", line) for output and ("done", (ok, status)) for
         # background-thread completion. Everything from a worker thread
         # goes through this queue and is only ever touched here in
@@ -80,6 +82,18 @@ class ImporterApp:
         log_row.pack(fill="x")
         tk.Label(
             log_row, text=f"Log file: {DEFAULT_LOG_PATH}", fg="#777777", font=("TkDefaultFont", 8)
+        ).pack(side="left", anchor="w")
+        self.clear_log_btn = tk.Button(
+            log_row, text="Clear Import History...", command=self.on_clear_log, font=("TkDefaultFont", 8)
+        )
+        self.clear_log_btn.pack(side="right")
+
+        force_row = tk.Frame(top)
+        force_row.pack(fill="x")
+        tk.Checkbutton(
+            force_row,
+            text="Force re-import (send this batch's entries even if already logged as imported)",
+            variable=self.force_var,
         ).pack(anchor="w")
 
         tk.Label(top, text="3. Review the dry-run report below, then click Import.").pack(
@@ -138,6 +152,7 @@ class ImporterApp:
         self.busy = busy
         state = "disabled" if busy else "normal"
         self.browse_btn.configure(state=state)
+        self.clear_log_btn.configure(state=state)
         self.import_btn.configure(state="disabled" if busy or not self.dry_run_ok else "normal")
         self.status_label.configure(text=status)
 
@@ -153,7 +168,11 @@ class ImporterApp:
         self.dry_run_ok = False
         self.import_btn.configure(state="disabled")
         self.clear_output()
-        self._run_in_background(self._dry_run_worker)
+        # Read the checkbox here on the main thread -- Tk variables should
+        # only be touched from the main thread, so the plain bool is what
+        # gets handed to the background worker, not the Tk variable itself.
+        force = self.force_var.get()
+        self._run_in_background(lambda: self._dry_run_worker(force))
 
     def on_import(self) -> None:
         if not self.batch_path or not self.dry_run_ok:
@@ -165,8 +184,43 @@ class ImporterApp:
             icon="warning",
         ):
             return
+        force = self.force_var.get()
         self.clear_output()
-        self._run_in_background(self._commit_worker)
+        self._run_in_background(lambda: self._commit_worker(force))
+
+    def on_clear_log(self) -> None:
+        if self.busy:
+            return
+        if not DEFAULT_LOG_PATH.exists():
+            messagebox.showinfo(
+                "Clear Import History", "There is no import history yet - nothing to clear."
+            )
+            return
+        if not messagebox.askyesno(
+            "Clear Import History",
+            "This clears the de-duplication history for ALL past imports done by this "
+            "tool, not just the currently selected batch. After clearing, previously "
+            "imported transactions will look brand new and could be inserted into "
+            "QuickBooks AGAIN if you re-run an old batch file.\n\n"
+            "This does NOT undo or remove anything already in QuickBooks - it only "
+            "resets this tool's own memory of what it already sent.\n\n"
+            "The current log will be backed up (not deleted) so it can be recovered "
+            "if needed. Continue?",
+            icon="warning",
+        ):
+            return
+        try:
+            backup_path = DEFAULT_LOG_PATH.with_name(
+                f"{DEFAULT_LOG_PATH.stem}.backup-{datetime.now():%Y%m%d-%H%M%S}{DEFAULT_LOG_PATH.suffix}"
+            )
+            DEFAULT_LOG_PATH.rename(backup_path)
+        except OSError as e:
+            messagebox.showerror("Clear Import History", f"Could not clear the log: {e}")
+            return
+        messagebox.showinfo(
+            "Clear Import History",
+            f"Done. The previous log was backed up to:\n{backup_path}",
+        )
 
     def _run_in_background(self, target) -> None:
         self.set_busy(True, "Working...")
@@ -187,7 +241,7 @@ class ImporterApp:
         thread.start()
 
     # -- Background workers (must never touch tkinter widgets directly) --
-    def _dry_run_worker(self) -> None:
+    def _dry_run_worker(self, force: bool) -> None:
         try:
             batch = load_batch(self.batch_path)
         except ValidationError as e:
@@ -201,7 +255,9 @@ class ImporterApp:
             return
 
         self.batch = batch
-        skip_ids = load_processed_line_ids(DEFAULT_LOG_PATH)
+        skip_ids = set() if force else load_processed_line_ids(DEFAULT_LOG_PATH)
+        if force:
+            self.emit("Force re-import is ON: already-imported entries will NOT be skipped.\n")
 
         missing: list[str] = []
         connected = True
@@ -225,15 +281,15 @@ class ImporterApp:
 
         self._signal_done(ok, status)
 
-    def _commit_worker(self) -> None:
-        skip_ids = load_processed_line_ids(DEFAULT_LOG_PATH)
+    def _commit_worker(self, force: bool) -> None:
+        skip_ids = set() if force else load_processed_line_ids(DEFAULT_LOG_PATH)
         try:
             result_code = run_commit(
                 self.batch,
                 company_file="",
                 log_path=DEFAULT_LOG_PATH,
                 skip_ids=skip_ids,
-                force=False,
+                force=force,
                 continue_on_error=True,
                 emit=self.emit,
             )
