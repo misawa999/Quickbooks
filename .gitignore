@@ -2,3 +2,8 @@ __pycache__/
 *.pyc
 .pytest_cache/
 import_log.jsonl
+
+# PyInstaller build output (build_exe.bat) -- built locally, not committed.
+build/
+dist/
+*.spec

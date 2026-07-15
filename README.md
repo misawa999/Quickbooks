@@ -10,10 +10,15 @@ This is intentionally a scoped-down MVP: **journal entries only**, no
 bank-statement parsing, no auto-creation of accounts/names. See "Non-goals"
 below.
 
-## Quick start — for office staff (GUI, no typing)
+## Quick start — for office staff (standalone .exe, no Python needed)
+
+The maintainer builds `QuickBooks Importer.exe` once (see "Building the
+standalone .exe" below) and hands that single file to coworkers — their
+computer needs QuickBooks Desktop + the QuickBooks SDK installed (see
+Requirements), but **not Python, not this repo, not pip installs**.
 
 1. Make sure QuickBooks Desktop is open with the company file loaded.
-2. Double-click **`QuickBooks Importer.bat`**. A window opens — no black
+2. Double-click **`QuickBooks Importer.exe`**. A window opens — no black
    console, no commands to type.
 3. Click **Browse...** and pick the batch JSON file for this import.
 4. The window automatically shows a dry-run report: exactly what would be
@@ -25,6 +30,24 @@ below.
 That's the entire workflow. The window enforces the safe order — it won't
 let you click Import until a clean dry-run has run for the file you have
 selected.
+
+(Running `gui.py`/`QuickBooks Importer.bat` from source instead of the
+packaged `.exe` works identically, just needs Python set up — see below.)
+
+## Building the standalone .exe
+
+On a machine with this repo and 32-bit Python set up (see Requirements),
+double-click **`build_exe.bat`**. It installs `pyinstaller` and packages
+`gui.py` into a single file at `dist\QuickBooks Importer.exe`. Copy that
+one file to a coworker's computer — that's the entire distribution, no
+folder of source files needed. Re-run `build_exe.bat` whenever `gui.py` or
+anything it imports changes, and redistribute the new `.exe`.
+
+Note this only packages the *app*; it does not and cannot bundle the
+QuickBooks SDK itself, since installing that registers a COM component
+with Windows (a system-level step, not something that fits inside a
+portable `.exe`) — the SDK still needs installing separately on each
+machine, same as QuickBooks Desktop itself.
 
 ## Quick start — for whoever maintains this tool (CLI, scriptable)
 
@@ -78,9 +101,19 @@ batch.json  →  validate (Pydantic)  →  dry-run report  →  operator reviews
 
 ## Requirements
 
+**Every machine that runs this tool** (whether the packaged `.exe` or from
+source) needs:
+
 - **Windows**, with QuickBooks Desktop Canada Pro 2021 installed and the
   company file open.
-- [QuickBooks SDK](https://developer.intuit.com/app/developer/qbdesktop/docs/get-started) — the last release (v16) works with QB 2021.
+- [QuickBooks SDK](https://developer.intuit.com/app/developer/qbdesktop/docs/get-started) — the last release (v16) works with QB 2021. This is the
+  one piece that can't be packaged away — it registers a COM component
+  with Windows, which is a system-level install step independent of
+  Python or how the rest of the tool is distributed.
+
+**Only the build/maintainer machine** — the one that produces `QuickBooks
+Importer.exe` for everyone else — additionally needs:
+
 - **32-bit Python**, specifically. QuickBooks Desktop 2021 is a 32-bit
   application, and its SDK's COM component can't reliably be driven from a
   64-bit process — with 64-bit Python you'll hit `Could not start
@@ -93,24 +126,27 @@ batch.json  →  validate (Pydantic)  →  dry-run report  →  operator reviews
   ```
   py -0
   ```
-  which lists something like `-V:3.13-32   Python 3.13 (32-bit)`. `run_import.bat`
-  detects this automatically — you only need the exact tag (e.g. `-3.13-32`)
-  if you're running the CLI directly (see "Usage (manual / advanced)"
-  below).
+  which lists something like `-V:3.13-32   Python 3.13 (32-bit)`. The
+  `.bat` launchers and `build_exe.bat` all detect this automatically — you
+  only need the exact tag (e.g. `-3.13-32`) if running commands directly
+  (see "Usage (manual / advanced)" below).
 - With the right (32-bit) Python, install the packages this tool needs —
   substitute your own tag from `py -0`:
   ```
   py -3.13-32 -m pip install -r requirements.txt
   ```
   (`pydantic`, `pywin32` on Windows, `pytest` for the test suite.) This
-  needs to be re-run once on each new computer you use this tool from.
+  needs to be re-run once on each new computer you develop/build from.
 - The GUI (`gui.py` / `QuickBooks Importer.bat`) uses `tkinter`, which
   ships built into the standard python.org Windows installer — nothing
   extra to install for it specifically.
 
+Coworkers running the packaged `QuickBooks Importer.exe` need none of the
+above Python setup — just QuickBooks Desktop and the SDK.
+
 Schema validation, the dry-run report, and the test suite all run fine on
-any OS with no QuickBooks installed — only `--commit` requires the real
-Windows/QuickBooks environment.
+any OS with no QuickBooks installed — only `--commit` (or clicking Import
+in the GUI) requires the real Windows/QuickBooks environment.
 
 ## First-time QuickBooks setup
 
@@ -246,7 +282,8 @@ to intentionally re-run it with `--force` semantics via a fresh log).
 ## Repo layout
 
 ```
-QuickBooks Importer.bat  # GUI launcher -- give this one to office staff
+build_exe.bat       # maintainer-only: packages gui.py -> dist\QuickBooks Importer.exe
+QuickBooks Importer.bat  # GUI launcher (from source) -- or use the packaged .exe instead
 run_import.bat      # CLI launcher: dry-run -> type YES -> commit
 gui.py              # Tkinter GUI (browse, review, click Import)
 schema.py          # Pydantic models for the batch format

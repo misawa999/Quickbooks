@@ -2,8 +2,11 @@
 """Minimal GUI for the QuickBooks journal importer.
 
 For non-technical users: browse for a batch JSON file, review the dry-run
-report, then click Import. No command line needed. Launch by double-clicking
-"QuickBooks Importer.bat" (uses pyw so no console window flashes up).
+report, then click Import. No command line needed. Can run from source via
+"QuickBooks Importer.bat", or as a standalone packaged .exe built by
+build_exe.bat (see README) -- the packaged .exe has NO console window at
+all, so every error path below is deliberately routed through a visible
+dialog rather than printed text, or it would vanish with zero trace.
 
 Runs QuickBooks calls in a background thread so the window never freezes,
 since COM calls to QuickBooks can take a few seconds each. Tkinter itself is
@@ -15,7 +18,9 @@ from __future__ import annotations
 
 import json
 import queue
+import sys
 import threading
+import traceback
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, scrolledtext
@@ -161,7 +166,20 @@ class ImporterApp:
 
     def _run_in_background(self, target) -> None:
         self.set_busy(True, "Working...")
-        thread = threading.Thread(target=target, daemon=True)
+
+        def guarded() -> None:
+            # A packaged --windowed .exe has no console, so an uncaught
+            # exception here would otherwise kill the thread silently: the
+            # status bar would stay stuck on "Working..." forever with no
+            # explanation and no way to tell it crashed vs. is just slow.
+            try:
+                target()
+            except Exception:
+                self.emit("Unexpected error:")
+                self.emit(traceback.format_exc())
+                self._signal_done(False, "Unexpected error - see above.")
+
+        thread = threading.Thread(target=guarded, daemon=True)
         thread.start()
 
     # -- Background workers (must never touch tkinter widgets directly) --
@@ -225,10 +243,45 @@ class ImporterApp:
         self._signal_done(False, status)
 
 
+def _show_fatal_error(message: str) -> None:
+    """Last-resort error display. Tries a Tk dialog first; if Tk itself is
+    broken, falls back to a raw Win32 message box (needs no Tk at all) so a
+    startup failure is never completely invisible in a --windowed .exe."""
+    try:
+        messagebox.showerror("QuickBooks Importer - Error", message)
+        return
+    except Exception:
+        pass
+    if sys.platform == "win32":
+        try:
+            import ctypes
+
+            ctypes.windll.user32.MessageBoxW(0, message, "QuickBooks Importer - Error", 0x10)
+        except Exception:
+            pass
+
+
 def main() -> None:
-    root = tk.Tk()
-    ImporterApp(root)
-    root.mainloop()
+    try:
+        root = tk.Tk()
+    except Exception:
+        _show_fatal_error(f"Could not start the GUI toolkit:\n\n{traceback.format_exc()}")
+        return
+
+    # Tkinter's default behavior for an exception raised inside a widget
+    # callback (e.g. a button click) is to print it to stderr and keep
+    # running -- invisible in a --windowed .exe with no stderr to see.
+    def report_callback_exception(exc_type, exc_value, exc_tb) -> None:
+        text = "".join(traceback.format_exception(exc_type, exc_value, exc_tb))
+        _show_fatal_error(f"QuickBooks Importer hit an unexpected error:\n\n{text}")
+
+    root.report_callback_exception = report_callback_exception
+
+    try:
+        ImporterApp(root)
+        root.mainloop()
+    except Exception:
+        _show_fatal_error(f"QuickBooks Importer crashed on startup:\n\n{traceback.format_exc()}")
 
 
 if __name__ == "__main__":
