@@ -86,17 +86,21 @@ class ImporterApp:
             anchor="w", pady=(8, 0)
         )
 
-        self.output = scrolledtext.ScrolledText(self.root, wrap="word", state="disabled")
-        self.output.pack(fill="both", expand=True, padx=10, pady=(0, 10))
-
+        # Pack the bottom bar with side="bottom" BEFORE the expanding text
+        # box below, so it always reserves its own space first -- packed
+        # in the other order, the text box's expand=True can claim space
+        # the button row needs, clipping the button off the bottom edge.
         bottom = tk.Frame(self.root, padx=10, pady=10)
-        bottom.pack(fill="x")
+        bottom.pack(side="bottom", fill="x")
         self.status_label = tk.Label(bottom, text="", anchor="w")
         self.status_label.pack(side="left", fill="x", expand=True)
         self.import_btn = tk.Button(
             bottom, text="Import into QuickBooks", command=self.on_import, state="disabled"
         )
         self.import_btn.pack(side="right")
+
+        self.output = scrolledtext.ScrolledText(self.root, wrap="word", state="disabled")
+        self.output.pack(fill="both", expand=True, padx=10, pady=(0, 10))
 
     # -- UI helpers -------------------------------------------------
     def emit(self, line: str) -> None:
