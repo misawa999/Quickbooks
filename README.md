@@ -1,14 +1,25 @@
 # Simple Journal Importer
 
-A minimal tool to import a JSON batch of **general journal entries** into
-**QuickBooks Desktop Canada Pro 2021** via the QuickBooks SDK (qbXML over the
-`QBXMLRP2` COM interface). Each entry optionally carries a foreign `currency`
-and `exchange_rate`, so it supports multicurrency journal entries as well as
-plain home-currency ones.
+A minimal tool to import business data into **QuickBooks Desktop Canada Pro
+2021** via the QuickBooks SDK (qbXML over the `QBXMLRP2` COM interface). Two
+independent flows, sharing one GUI, one CLI-style dry-run/`--commit` design,
+and one import log:
 
-This is intentionally a scoped-down MVP: **journal entries only**, no
-bank-statement parsing, no auto-creation of accounts/names. See "Non-goals"
-below.
+- **Journal entries** (`import_batch.py`, one JSON batch file) — the
+  original flow. Each entry optionally carries a foreign `currency` and
+  `exchange_rate` for multicurrency postings.
+- **Business transactions** (`import_workbook.py`, one Excel workbook) —
+  Customers, Vendors, Invoices, Vendor Bills, Customer Payments, and Vendor
+  Bill Payments, each with optional per-transaction `currency`/
+  `exchange_rate`. Invoices reference pre-existing Items; Bills use plain
+  expense accounts; Customer/Vendor Payments are linked to the specific
+  invoice(s)/bill(s) they settle. See "Business transactions (Excel
+  workbook)" below.
+
+Both flows require Multicurrency to already be enabled in the company file
+if you use `currency`/`exchange_rate` fields at all (see "First-time
+QuickBooks setup"). No bank-statement parsing, no automatic FX rate lookup.
+See "Non-goals" below.
 
 ## Quick start — for office staff (standalone .exe, no Python needed)
 
@@ -236,6 +247,68 @@ Field rules:
 See `sample_batch.json` for a working example (one multicurrency entry, one
 home-currency entry).
 
+## Business transactions (Excel workbook)
+
+`import_workbook.py` (or the "Business Transactions (Excel)" tab in the GUI)
+imports one `.xlsx` workbook with up to six sheets. Every sheet is optional
+— a workbook can contain any subset. Sheet names and column headers are
+matched exactly (case-sensitive); column order doesn't matter.
+
+Invoices, Bills, CustomerPayments, and VendorPayments are "tidy" sheets: one
+row per line item, with header fields (party name, date, currency, etc.)
+repeated on every row that shares the same key column. All rows sharing a
+key must agree on every header field, or the import fails with a clear error
+naming the mismatch.
+
+| Sheet | Key column | Header columns | Line columns |
+|---|---|---|---|
+| `Customers` | `customer_name` (one row per customer) | `company_name`, `currency`, `email`, `phone`, `bill_address_line1..5`, `memo` | — |
+| `Vendors` | `vendor_name` (one row per vendor) | `company_name`, `currency`, `email`, `phone`, `address_line1..5`, `memo` | — |
+| `Invoices` | `invoice_number` | `customer_name`, `invoice_date`, `due_date`, `terms`, `currency`, `exchange_rate`, `ar_account`, `memo` | `item_name`, `description`, `quantity`, `rate`, `amount` |
+| `Bills` | `bill_number` | `vendor_name`, `bill_date`, `due_date`, `currency`, `exchange_rate`, `ap_account`, `memo` | `account`, `description`, `amount` |
+| `CustomerPayments` | `payment_id` | `customer_name`, `payment_date`, `deposit_to_account`, `ar_account`, `currency`, `exchange_rate`, `payment_method`, `ref_number`, `memo` | `applied_invoice_number`, `applied_amount` |
+| `VendorPayments` | `payment_id` | `vendor_name`, `payment_date`, `bank_account`, `ap_account`, `currency`, `exchange_rate`, `check_number`, `memo` | `applied_bill_number`, `applied_amount` |
+
+Notes:
+
+- **Invoice lines reference Items**, not accounts — `item_name` must match
+  an existing entry in QuickBooks' Item List exactly. This is a qbXML
+  requirement (`InvoiceAdd` lines use `ItemRef`), not a choice made here.
+  Bill lines use plain expense accounts instead, same convention as journal
+  entries.
+- **Payments must be linked** to the specific invoice(s)/bill(s) they
+  settle — there's no unapplied/on-account payment support. Each
+  `CustomerPayments`/`VendorPayments` row applies a specific amount to one
+  invoice/bill number; a payment settling several invoices is several rows
+  sharing the same `payment_id`.
+- `invoice_number` / `bill_number` / a payment's `ref_number` /
+  `check_number` are all sent to QuickBooks as `RefNumber`, which QuickBooks
+  Desktop caps at **11 characters** — anything longer is rejected during
+  validation, before any QuickBooks call is made.
+- `currency` / `exchange_rate` follow the same convention as journal
+  entries (see above): both optional together, home-currency-per-foreign-
+  unit, ISO codes translated via `CURRENCY_NAMES`. A customer's/vendor's
+  currency is fixed for its lifetime in QuickBooks multicurrency, so if a
+  `Customers`/`Vendors` sheet is present, every invoice/bill against that
+  party must use the same currency (checked at load time, not just at
+  QuickBooks-submission time).
+- **Customers and Vendors are skip-if-exists**, not update — if a name
+  already exists in QuickBooks (checked live on every run, not from the
+  local log), the Add is skipped rather than erroring or overwriting.
+- Processing order is fixed: Customers/Vendors → Invoices/Bills →
+  CustomerPayments/VendorPayments, since each stage depends on records
+  created by the one before it. Payments resolve their target invoice/bill
+  number to QuickBooks' internal `TxnID` via a live query at commit time
+  (`txn_lookup.py`) — this only succeeds once the invoice/bill actually
+  exists in QuickBooks, whether created in this same run or an earlier one.
+
+Same dry-run-first workflow as the journal entry flow:
+
+```bash
+python import_workbook.py transactions.xlsx                # dry run
+python import_workbook.py transactions.xlsx --commit        # write to QuickBooks
+```
+
 ## Usage (manual / advanced)
 
 `run_import.bat` covers day-to-day use. For scripting, or when you need a
@@ -297,14 +370,16 @@ to intentionally re-run it with `--force` semantics via a fresh log).
 build_exe.bat       # maintainer-only: packages gui.py -> dist\QuickBooks Importer.exe
 QuickBooks Importer.bat  # GUI launcher (from source) -- or use the packaged .exe instead
 run_import.bat      # CLI launcher: dry-run -> type YES -> commit
-gui.py              # Tkinter GUI (browse, review, click Import)
-schema.py          # Pydantic models for the batch format
-qb_requests.py      # qbXML request builders + response parsers
+gui.py              # Tkinter GUI, two tabs: journal entries (JSON) + business transactions (Excel)
+schema.py          # Pydantic models for both the journal-entry batch and the workbook entities
+qb_requests.py      # qbXML request builders + response parsers (all entity types)
 qb_session.py       # COM connection/session lifecycle (Windows-only at runtime)
-preflight.py        # account-existence check
-dedupe.py           # import_log.jsonl read/append
-import_batch.py     # CLI entry point + shared dry-run/commit logic (used by gui.py too)
-sample_batch.json   # example batch (multicurrency + home-currency entries)
+preflight.py        # account/item existence checks, customer/vendor skip-if-exists checks
+txn_lookup.py        # live RefNumber -> TxnID resolution for linking payments to invoices/bills
+dedupe.py           # import_log.jsonl read/append (shared by both flows, namespaced keys)
+import_batch.py     # CLI entry point + shared dry-run/commit logic for journal entries
+import_workbook.py  # CLI entry point + shared dry-run/commit logic for business transactions
+sample_batch.json   # example journal-entry batch (multicurrency + home-currency entries)
 tests/               # schema, qbXML builder, dedupe, and emit-injection tests (no QuickBooks needed)
 ```
 
@@ -315,18 +390,24 @@ pip install -r requirements.txt
 pytest tests/ -v
 ```
 
-All 16 tests run on any OS (they test schema validation, qbXML string
-generation, and log dedupe logic directly — no COM/QuickBooks involved).
+All tests run on any OS (they test schema validation, qbXML string
+generation, workbook loading, and log dedupe logic directly — no
+COM/QuickBooks involved). The one thing tests can't cover is exact qbXML
+element ordering for the newer Customer/Vendor/Invoice/Bill/Payment request
+types — see the ordering note at the top of `qb_requests.py` and verify
+against a backup company file before relying on them in production.
 
 ## Non-goals (v1)
 
 - No bank statement parsing / PDF-CSV ingestion.
-- No automatic FX rate lookup — rates go in the batch JSON.
-- No auto-creation of accounts, customers, or vendors.
-- No deposit/cheque transaction types — journal entries only.
-- No GUI.
+- No automatic FX rate lookup — rates go in the batch JSON / workbook.
+- No update/edit of existing customers, vendors, invoices, or bills — only
+  create-if-not-already-present.
+- No unapplied/on-account payments — customer and vendor payments must be
+  linked to specific invoices/bills.
 - No modification or deletion of existing QuickBooks transactions.
-- No QuickBooks-side duplicate search (see Preflight checks above).
+- No QuickBooks-side duplicate search beyond RefNumber/name existence
+  checks (see Preflight checks above).
 
 ## Safety notes
 
